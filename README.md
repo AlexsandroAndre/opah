@@ -20,21 +20,23 @@ opah/
 
 ### Identified Problems and Criticality
 
-| Problem | Criticality in a Real-World System |
-| :--- | :--- |
-| **Thread Safety / Concurrency Issue** | Accessing the static, non-synchronized `ArrayList<String> lines` from multiple threads leads to a **Race Condition**. [cite_start]This guarantees **data corruption** (missing lines, inconsistent state) and can result in `ArrayIndexOutOfBoundsException`s in production[cite: 14]. |
-| **Resource Leakage** | The `BufferedReader` was not wrapped in a **try-with-resources** block. [cite_start]If an `IOException` occurred during `br.readLine()`, the `br.close()` call would be skipped, leading to a file handle **resource leak** that could exhaust OS limits over time[cite: 20, 26]. |
-| **I/O Inefficiency** | 10 separate threads were created to **re-open and read the same `data.txt` file**, causing massive I/O overhead and redundant work. |
-| **Missing Task Synchronization** | The main thread called `executor.shutdown()` but didn't wait (`awaitTermination`) for the tasks to finish. [cite_start]The application could exit prematurely, printing an incomplete `lines.size()` result[cite: 34]. |
-| **Poor Error Handling** | [cite_start]The general `catch (Exception e) {}` inside the lambda silently **swallows all exceptions**, making debugging impossible and masking critical I/O or other failures[cite: 29]. |
+| Problem | Criticality in a Real-World System                                                                                                                                                                                                                                                             |
+| :--- |:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Thread Safety / Concurrency Issue** | The original code used a shared, non-synchronized ArrayList<String> across multiple threads. This would cause race conditions and potentially corrupt program state.                                                                                                                           |
+| **Resource Leakage** | `BufferedReader` was closed manually. If an exception occurred before `br.close()`,the file descriptor would remain open, leading to a resource leak. |
+| **I/O Inefficiency** | Multiple threads re-opened and re-read the same `data.txt` file, resulting in wasted I/O and redundant computation.                                                                                                                                                            |
+| **Missing Task Synchronization** | The program shut down the `ExecutorService` without waiting for all tasks to complete, so `lines.size()` could be printed before processing finished.                                                                         |
+| **Poor Error Handling** | A generic `catch (Exception e)` inside each worker only printed stack traces. This practice hides the root cause of failures and complicates debugging.                                                                                                     |
+| **Memory Growth** | All lines were stored in memory without limits. For large files, this can trigger OutOfMemoryError.                                                                                                     |
 
-### Solution Applied: **Functional Parallel Processing**
+### Solution Applied: **ExecutorService with Try-with-Resources**
 
-The shared state and `ExecutorService` were eliminated in favor of Java's modern **Streams API** for safe and efficient parallelism.
+Instead of manually managing concurrency with unsafe collections, the solution uses:
 
-* **Concurrency Fix:** The logic uses `Files.lines(...).parallel().map(...).toList()`, which is an **immutable, functional pipeline**. The **`parallel()`** method safely handles concurrent processing without requiring manual locks or external `List` synchronization.
-* **Resource Fix:** `Files.lines()` is a form of managed resource and, when used within a `try-with-resources` block, **guarantees the underlying file resource is closed** upon completion or failure.
-* **I/O Fix:** The file is **opened and read only once**.
+* **Safe Concurrency:** A `ConcurrentLinkedQueue` stores results without risk of race conditions.
+* **Resource Safety:** Both `ExecutorService` and `BufferedReader` are wrapped in `try-with-resources`, ensuring proper closure even in case of exceptions.
+* **Task Synchronization:** The program explicitly waits for all submitted tasks via `awaitTermination`, guaranteeing correct output.
+* **Cleaner Code:** Exception handling is consolidated, and shared mutable state is avoided.
 
 ---
 
