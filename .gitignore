@@ -1,4 +1,9 @@
 .vscode
+.idea
 
 /java/.idea
 /java/out/
+
+/csharp/DownloaderApp/bin/
+/csharp/DownloaderApp/obj/
+/csharp/DownloaderApp/.idea
